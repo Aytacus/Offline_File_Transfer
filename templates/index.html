@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📁 Offline Dosya Aktarımı</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 25px;
+            padding: 20px 0;
+        }
+
+        .header h1 {
+            font-size: clamp(1.8rem, 5vw, 2.5rem);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: clamp(0.9rem, 3vw, 1.1rem);
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            padding: clamp(15px, 4vw, 25px);
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 20px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 8px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: clamp(0.9rem, 2.5vw, 1rem);
+            color: #666;
+            transition: all 0.3s;
+            white-space: nowrap;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            background: #f8f9ff;
+            font-weight: 600;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .device-list {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .device-item {
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fafafa;
+        }
+
+        .device-item:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .device-item.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .device-item.selected .device-uid {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .device-item.server-device {
+            border-color: #f39c12;
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+            color: #d68910;
+        }
+
+        .device-item.server-device:hover {
+            border-color: #f39c12;
+            background: linear-gradient(135deg, #fff8e1, #ffeaa7);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.2);
+        }
+
+        .device-item.server-device.selected {
+            border-color: #f39c12;
+            background: linear-gradient(135deg, #f39c12, #d68910);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(243, 156, 18, 0.4);
+        }
+
+        .device-item.server-device.selected .device-uid {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .device-info {
+            flex: 1;
+            min-width: 0; /* Overflow için */
+        }
+
+        .device-name {
+            font-weight: bold;
+            margin-bottom: 4px;
+            font-size: clamp(0.9rem, 2.5vw, 1rem);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .device-uid {
+            font-size: clamp(0.8rem, 2vw, 0.9rem);
+            opacity: 0.8;
+            font-family: 'Courier New', monospace;
+            background: rgba(255,255,255,0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 4px;
+        }
+
+        .upload-area {
+            border: 3px dashed #ccc;
+            border-radius: 15px;
+            padding: clamp(20px, 6vw, 40px);
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: #fafafa;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: scale(1.02);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: clamp(0.9rem, 2.5vw, 1rem);
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 5px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
+        }
+
+        .file-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 15px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            background: #fafafa;
+            margin-bottom: 8px;
+            border-radius: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .file-info {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .file-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: clamp(0.9rem, 2.5vw, 1rem);
+            word-break: break-word;
+        }
+
+        .file-meta {
+            font-size: clamp(0.8rem, 2vw, 0.9rem);
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 12px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #b3d7ff;
+        }
+
+        .security-info {
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+            border: 2px solid #f39c12;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .security-info h4 {
+            color: #d68910;
+            margin-bottom: 8px;
+        }
+
+        .security-info p {
+            color: #856404;
+            font-size: 0.9rem;
+        }
+
+        .my-device {
+            background: linear-gradient(135deg, #e8f5e8, #d4f1d4);
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            border: 2px solid #28a745;
+        }
+
+        .my-device h3 {
+            margin-bottom: 8px;
+            color: #155724;
+        }
+
+        .my-uid {
+            font-family: 'Courier New', monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #155724;
+            background: rgba(255,255,255,0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: inline-block;
+            letter-spacing: 1px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .input-group input {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            font-size: clamp(0.9rem, 2.5vw, 1rem);
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .refresh-btn {
+            background: rgba(255,255,255,0.9);
+            color: #667eea;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: 200px;
+        }
+
+        .section-title {
+            font-size: clamp(1rem, 3vw, 1.2rem);
+            font-weight: 600;
+            margin: 20px 0 15px 0;
+            color: #333;
+        }
+
+        /* Mobil optimizasyonları */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .refresh-btn {
+                font-size: 0.8rem;
+                padding: 6px 10px;
+            }
+            
+            .tabs {
+                gap: 5px;
+            }
+            
+            .tab {
+                font-size: 0.8rem;
+                padding: 8px 4px;
+                min-width: 80px;
+            }
+            
+            .card {
+                border-radius: 15px;
+                padding: 15px;
+            }
+            
+            .tabs {
+                border-radius: 0;
+                margin: -15px -15px 20px -15px;
+                padding: 0 15px;
+                background: #f8f9fa;
+            }
+
+            .tab {
+                font-size: 0.9rem;
+                padding: 12px 6px;
+            }
+
+            .file-item {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .file-actions {
+                justify-content: center;
+                margin-top: 10px;
+            }
+
+            .device-item {
+                padding: 12px;
+            }
+
+            .upload-area {
+                padding: 25px 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .input-group {
+                flex-direction: column;
+            }
+
+            .input-group input {
+                min-width: auto;
+            }
+
+            .btn {
+                width: 100%;
+                margin: 5px 0;
+            }
+
+            .file-actions .btn {
+                flex: 1;
+                width: auto;
+            }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📁 Offline Dosya Aktarımı</h1>
+            <p>Güvenli dosya paylaşımı</p>
+            <button class="btn refresh-btn" onclick="refreshDevices()" title="Cihazları Yenile">🔄 Yenile</button>
+        </div>
+
+        <div class="card">
+            <div class="my-device">
+                <h3> Bu Cihaz</h3>
+                <div>
+                    <strong>Cihaz Adı:</strong> <span id="myDeviceName">Yükleniyor...</span><br>
+                    <strong>UID:</strong> <span id="myUID" class="my-uid">Yükleniyor...</span>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('send')">📤 Gönder</button>
+                <button class="tab" onclick="showTab('receive')">📥 Al</button>
+                <button class="tab" onclick="showTab('devices')">📱 Cihazlar</button>
+                <button class="tab" onclick="showTab('sent')">📤 Gönderilen</button>
+            </div>
+
+            <!-- Dosya Gönderme Sekmesi -->
+            <div id="sendTab" class="tab-content active">
+                <h3 class="section-title">📤 Dosya Gönder</h3>
+                
+                <div class="status info">
+                    💡 <strong>İpucu:</strong> Telefondan PC'ye dosya göndermek için altındaki listeden 💻 Bu PC'yi seçebilirsin!<br>
+                    📁 <strong>Çoklu Dosya:</strong> Birden fazla dosya seçebilir veya sürükleyebilirsin (Toplam 2GB'a kadar)
+                </div>
+                
+                <div id="connectedDevices">
+                    <h4>🌐 Bağlı Cihazlar:</h4>
+                    <div id="deviceList" class="device-list">
+                        <div class="status info">Cihazlar yükleniyor... <div class="loading"></div></div>
+                    </div>
+                </div>
+
+                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                    <div>
+                        <h3>📁 Dosya(lar) Seç veya Sürükle</h3>
+                        <p>Çoklu dosya seçimi desteklenir - Toplam 2GB'a kadar</p>
+                        <input type="file" id="fileInput" class="file-input" multiple onchange="handleFileSelect(event)">
+                    </div>
+                </div>
+
+                <div id="uploadStatus"></div>
+                <div id="uploadProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <div id="progressText">Yükleniyor...</div>
+                </div>
+            </div>
+
+            <!-- Dosya Alma Sekmesi -->
+            <div id="receiveTab" class="tab-content">
+                <h3 class="section-title">📥 Bana Gönderilen Dosyalar</h3>
+                
+                <div class="status info">
+                    UID'niz otomatik algılandı. Dosyalarınız güvenli klasörde saklanmaktadır.
+                </div>
+
+                <div class="input-group">
+                    <button class="btn" onclick="loadMyFiles()">📥 Dosyalarımı Göster</button>
+                </div>
+
+                <div id="myFilesList" class="file-list">
+                    <div class="status info">Yukarıdaki butona tıklayın</div>
+                </div>
+            </div>
+
+            <!-- Cihazlar Sekmesi -->
+            <div id="devicesTab" class="tab-content">
+                <h3 class="section-title">📱 Ağdaki Cihazlar</h3>
+                <button class="btn" onclick="refreshDevices()">🔄 Cihazları Yenile</button>
+                <div id="allDevicesList" class="device-list">
+                    <div class="status info">Cihazlar yükleniyor... <div class="loading"></div></div>
+                </div>
+            </div>
+
+            <!-- Gönderilen Dosyalar Sekmesi -->
+            <div id="sentTab" class="tab-content">
+                <h3 class="section-title">📤 Gönderdiğim Dosyalar</h3>
+                
+                <div class="status info">
+                    Bu cihazdan gönderilen tüm dosyalar burada görünür.
+                </div>
+
+                <div class="input-group">
+                    <button class="btn" onclick="loadSentFiles()">📤 Gönderilen Dosyalarımı Göster</button>
+                </div>
+
+                <div id="sentFilesList" class="file-list">
+                    <div class="status info">Yukarıdaki butona tıklayın</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedDevice = null;
+        let devices = [];
+        let myUID = null;
+        let myDeviceName = null;
+
+        // Sayfa yüklendiğinde
+        window.onload = function() {
+            refreshMyUID();
+            refreshDevices();
+            setupDragAndDrop();
+        };
+
+        // Sekmeler arası geçiş
+        function showTab(tabName) {
+            // Tüm sekmeleri gizle
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Seçili sekmeyi göster
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Kendi UID'mi yenile
+        async function refreshMyUID() {
+            try {
+                const response = await fetch('/api/my-uid');
+                const data = await response.json();
+                
+                myUID = data.uid;
+                myDeviceName = data.name;
+                
+                document.getElementById('myUID').textContent = myUID;
+                document.getElementById('myDeviceName').textContent = myDeviceName;
+            } catch (error) {
+                console.error('UID yüklenirken hata:', error);
+            }
+        }
+
+        // Cihazları yenile
+        async function refreshDevices() {
+            try {
+                const response = await fetch('/api/devices');
+                const data = await response.json();
+                
+                devices = data.connected_devices;
+                
+                updateDeviceList();
+                updateAllDevicesList();
+            } catch (error) {
+                console.error('Cihazları yüklerken hata:', error);
+                showStatus('Cihazları yüklerken hata oluştu', 'error');
+            }
+        }
+
+        // Cihaz listesini güncelle
+        function updateDeviceList() {
+            const deviceList = document.getElementById('deviceList');
+            
+            if (devices.length === 0) {
+                deviceList.innerHTML = '<div class="status info">Henüz hiç cihaz bağlı değil</div>';
+                return;
+            }
+
+            deviceList.innerHTML = devices.map(device => {
+                const isServer = device.is_server;
+                const icon = isServer ? '' : '';
+                const extraClass = isServer ? ' server-device' : '';
+                
+                return `
+                    <div class="device-item${extraClass}" onclick="selectDevice('${device.uid}')" id="device-${device.uid}">
+                        <div class="device-info">
+                            <div class="device-name">${icon} ${device.name}</div>
+                            <div class="device-uid">UID: ${device.uid}</div>
+                            <small style="opacity: 0.7">IP: ${device.ip}</small>
+                        </div>
+                        <div style="font-size: 1.5rem;">📁</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Tüm cihazlar listesini güncelle
+        function updateAllDevicesList() {
+            const allDevicesList = document.getElementById('allDevicesList');
+            
+            if (devices.length === 0) {
+                allDevicesList.innerHTML = '<div class="status info">Henüz hiç cihaz bağlı değil</div>';
+                return;
+            }
+
+            allDevicesList.innerHTML = devices.map(device => {
+                const isServer = device.is_server;
+                const icon = isServer ? '💻' : '📱';
+                const extraClass = isServer ? ' server-device' : '';
+                
+                return `
+                    <div class="device-item${extraClass}">
+                        <div class="device-info">
+                            <div class="device-name">${icon} ${device.name}</div>
+                            <div class="device-uid">UID: ${device.uid}</div>
+                            <div style="font-size: 0.9rem; opacity: 0.7; margin-top: 4px;">
+                                IP: ${device.ip}<br>
+                                MAC: ${device.mac}
+                                ${isServer ? '<br><strong>🖥️ Sunucu PC</strong>' : ''}
+                            </div>
+                        </div>
+                        <div style="font-size: 1.5rem;">📁</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Cihaz seç
+        function selectDevice(uid) {
+            // Önceki seçimi temizle
+            document.querySelectorAll('.device-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            // Yeni seçimi işaretle
+            const deviceElement = document.getElementById(`device-${uid}`);
+            if (deviceElement) {
+                deviceElement.classList.add('selected');
+                selectedDevice = uid;
+            }
+        }
+
+        // Dosya seçimi
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            if (files.length > 0 && selectedDevice) {
+                uploadFiles(files);
+            } else if (files.length > 0 && !selectedDevice) {
+                showStatus('Önce bir cihaz seçin', 'error');
+            }
+        }
+
+        // Drag & Drop
+        function setupDragAndDrop() {
+            const uploadArea = document.querySelector('.upload-area');
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && selectedDevice) {
+                    uploadFiles(files);
+                } else if (files.length > 0 && !selectedDevice) {
+                    showStatus('Önce bir cihaz seçin', 'error');
+                }
+            });
+        }
+
+        // Normal dosya yükleme (tek dosya için)
+        async function uploadFile(file) {
+            uploadFiles([file]);
+        }
+
+        // Dosyaları yükle
+        async function uploadFiles(files) {
+            const totalSize = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+            if (totalSize > 2 * 1024 * 1024 * 1024) {
+                showStatus('Toplam dosya boyutu 2GB\'ı geçemez', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            formData.append('target_uid', selectedDevice);
+
+            // Progress göster
+            document.getElementById('uploadProgress').style.display = 'block';
+            document.getElementById('progressText').textContent = `${files.length} dosya yükleniyor...`;
+
+            try {
+                const response = await fetch('/api/upload-multiple', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showStatus(`✅ ${files.length} dosya güvenli klasöre kaydedildi`, 'success');
+                    document.getElementById('fileInput').value = '';
+                } else {
+                    showStatus(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Dosyalar yüklenirken hata oluştu', 'error');
+                console.error('Upload multiple error:', error);
+            } finally {
+                document.getElementById('uploadProgress').style.display = 'none';
+            }
+        }
+
+        // Dosyalarımı yükle
+        async function loadMyFiles() {
+            if (!myUID) {
+                showStatus('UID yüklenemedi, sayfayı yenileyin', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/my-files/${myUID}`);
+                const data = await response.json();
+
+                const filesList = document.getElementById('myFilesList');
+
+                if (data.files.length === 0) {
+                    filesList.innerHTML = '<div class="status info">Bu cihaza gönderilen dosya bulunamadı</div>';
+                    return;
+                }
+
+                filesList.innerHTML = data.files.map(file => `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <div class="file-name">${file.is_encrypted ? '🔒' : '📄'} ${file.filename}</div>
+                            <div class="file-meta">
+                                👤 Gönderen: ${file.sender_name} (${file.sender_uid})<br>
+                                📊 Boyut: ${formatFileSize(file.size)}<br>
+                                🕒 Tarih: ${new Date(file.timestamp).toLocaleString('tr-TR')}<br>
+                                ${file.is_encrypted ? '🔐 Şifrelenmiş dosya' : '📁 Normal dosya'}
+                            </div>
+                        </div>
+                        <div class="file-actions">
+                            <button class="btn" onclick="downloadFile('${file.file_id}')">${file.is_encrypted ? '🔓 İndir & Çöz' : '📥 İndir'}</button>
+                            <button class="btn btn-danger" onclick="deleteFile('${file.file_id}')">🗑️ Sil</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                showStatus('Dosyalar yüklenirken hata oluştu', 'error');
+                console.error('Load files error:', error);
+            }
+        }
+
+        // Gönderilen dosyaları yükle
+        async function loadSentFiles() {
+            if (!myUID) {
+                showStatus('UID yüklenemedi, sayfayı yenileyin', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/sent-files/${myUID}`);
+                const data = await response.json();
+
+                const filesList = document.getElementById('sentFilesList');
+
+                if (data.files.length === 0) {
+                    filesList.innerHTML = '<div class="status info">Bu cihazdan gönderilen dosya bulunamadı</div>';
+                    return;
+                }
+
+                filesList.innerHTML = data.files.map(file => `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <div class="file-name">📄 ${file.filename}</div>
+                            <div class="file-meta">
+                                🎯 Alıcı: ${file.target_name} (${file.target_uid})<br>
+                                📊 Boyut: ${formatFileSize(file.size)}<br>
+                                🕒 Tarih: ${new Date(file.timestamp).toLocaleString('tr-TR')}<br>
+                                📁 Gönderilen dosya
+                            </div>
+                        </div>
+                        <div class="file-actions">
+                            <button class="btn" onclick="downloadFile('${file.file_id}')">📥 İndir</button>
+                            <button class="btn btn-danger" onclick="deleteFile('${file.file_id}', 'sent')">🗑️ Sil</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                showStatus('Gönderilen dosyalar yüklenirken hata oluştu', 'error');
+                console.error('Load sent files error:', error);
+            }
+        }
+
+        // Normal dosya indirme
+        function downloadFile(fileId) {
+            window.open(`/api/download/${fileId}`, '_blank');
+        }
+
+        // Dosya silme
+        async function deleteFile(fileId, listType = 'received') {
+            if (!confirm('Bu dosyayı silmek istediğinize emin misiniz?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/remove-file/${fileId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showStatus('✅ Dosya silindi', 'success');
+                    // Hangi listeden silindiğine göre ilgili listeyi yenile
+                    if (listType === 'sent') {
+                        loadSentFiles();
+                    } else {
+                        loadMyFiles();
+                    }
+                } else {
+                    showStatus(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Dosya silinirken hata oluştu', 'error');
+                console.error('Delete error:', error);
+            }
+        }
+
+        // Dosya boyutu formatlama
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Status mesajı göster
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            
+            // 5 saniye sonra temizle
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // 30 saniyede bir cihazları yenile
+        setInterval(refreshDevices, 30000);
+    </script>
+</body>
+</html> 
