@@ -14,6 +14,8 @@ import hashlib
 import atexit
 import signal
 import shutil
+import zipfile
+import tempfile
 
 # Windows Console Control Handler için
 if platform.system() == "Windows":
@@ -111,15 +113,26 @@ def get_connected_devices():
             # ARP tablosundan aktif cihazları al
             arp_result = subprocess.run(['arp', '-a'], capture_output=True, text=True, encoding='utf-8')
             
+            print(f"🔍 ARP taraması yapılıyor... Server IP: {server_ip}")
+            
             for line in arp_result.stdout.split('\n'):
-                if '192.168.' in line and 'dynamic' in line.lower():
+                # Daha geniş IP aralığı kontrol et
+                if any(subnet in line for subnet in ['192.168.', '10.', '172.', '169.254.']) and 'dynamic' in line.lower():
                     parts = line.strip().split()
                     if len(parts) >= 2:
                         ip = parts[0]
                         mac = parts[1].replace('-', ':').upper()
-                        if mac != "FF:FF:FF:FF:FF:FF" and ip != server_ip:
+                        
+                        # Broadcast ve kendi IP'sini filtrele
+                        if (mac != "FF:FF:FF:FF:FF:FF" and 
+                            ip != server_ip and 
+                            not ip.endswith('.255') and 
+                            not ip.endswith('.0')):
+                            
                             device_name = get_device_name_from_ip(ip)
                             device_uid = generate_device_uid(ip, device_name)
+                            
+                            print(f"✅ Cihaz eklendi: {device_name} ({ip})")
                             
                             # Cihaz bilgilerini güncelle
                             connected_devices[ip] = {
@@ -132,7 +145,7 @@ def get_connected_devices():
                                 'ip': ip,
                                 'name': device_name,
                                 'uid': device_uid,
-                                'mac': mac  # Görüntü için, artık kullanılmayacak
+                                'mac': mac
                             })
         
         # Sunucu PC'yi de listeye ekle
@@ -159,10 +172,50 @@ def get_connected_devices():
         except Exception as e:
             print(f"Server device info error: {e}")
         
+        print(f"📱 ARP'da {len(devices)} cihaz bulundu")
         return devices
+        
     except Exception as e:
         print(f"Error getting connected devices: {e}")
         return []
+
+def scan_network_range(base_ip):
+    """Network aralığını ping ile tara"""
+    discovered_ips = []
+    base_parts = base_ip.split('.')
+    network_base = '.'.join(base_parts[:3])
+    
+    print(f"🔍 Network taranıyor: {network_base}.1-254")
+    
+    import concurrent.futures
+    import socket
+    
+    def ping_ip(ip):
+        """Tek bir IP'yi ping at"""
+        try:
+            # Windows ping komutu
+            result = subprocess.run(['ping', '-n', '1', '-w', '1000', ip], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                return ip
+        except:
+            pass
+        return None
+    
+    # Paralel ping (sadece yaygın IP'ler)
+    test_ranges = [1, 2, 3, 4, 5, 10, 11, 12, 20, 21, 22, 30, 50, 100, 101, 102]
+    test_ips = [f"{network_base}.{i}" for i in test_ranges]
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_ip = {executor.submit(ping_ip, ip): ip for ip in test_ips}
+        
+        for future in concurrent.futures.as_completed(future_to_ip, timeout=5):
+            result = future.result()
+            if result:
+                discovered_ips.append(result)
+                print(f"🎯 Ping yanıtı: {result}")
+    
+    return discovered_ips
 
 def get_server_ip():
     """Bu PC'nin aktif IP adresini al"""
@@ -409,6 +462,81 @@ def download_file(file_id):
         print(f"Download error: {e}")
         return jsonify({'error': 'Dosya indirme hatası'}), 500
 
+@app.route('/api/download-multiple', methods=['POST'])
+def download_multiple_files():
+    """Çoklu dosya indirme - ZIP arşivi olarak"""
+    try:
+        data = request.get_json()
+        file_ids = data.get('file_ids', [])
+        
+        if not file_ids:
+            return jsonify({'error': 'Dosya ID\'si gerekli'}), 400
+        
+        # İstek sahibinin UID'sini al
+        client_ip = request.remote_addr
+        device_name = get_device_name_from_ip(client_ip)
+        client_uid = generate_device_uid(client_ip, device_name)
+        
+        # Geçici ZIP dosyası oluştur
+        temp_dir = tempfile.mkdtemp()
+        zip_filename = f"dosyalar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        zip_path = os.path.join(temp_dir, zip_filename)
+        
+        valid_files = []
+        
+        # Dosyaları kontrol et ve topla
+        for file_id in file_ids:
+            if file_id not in file_assignments:
+                continue
+                
+            file_info = file_assignments[file_id]
+            target_uid = file_info['target_uid']
+            sender_uid = file_info['sender_uid']
+            
+            # Yetki kontrolü: Hem gönderen hem alan indirebilir
+            if client_uid != target_uid and client_uid != sender_uid:
+                continue
+                
+            file_path = file_info['path']
+            if os.path.exists(file_path):
+                valid_files.append({
+                    'path': file_path,
+                    'name': file_info['filename']
+                })
+        
+        if not valid_files:
+            return jsonify({'error': 'İndirilecek dosya bulunamadı'}), 404
+        
+        # ZIP arşivi oluştur
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_data in valid_files:
+                zipf.write(file_data['path'], file_data['name'])
+        
+        # ZIP dosyasını gönder ve sonra temizle
+        def cleanup_temp_file():
+            try:
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+                if os.path.exists(temp_dir):
+                    os.rmdir(temp_dir)
+            except:
+                pass
+        
+        # 30 saniye sonra temizle
+        cleanup_timer = threading.Timer(30.0, cleanup_temp_file)
+        cleanup_timer.start()
+        
+        return send_file(
+            zip_path, 
+            as_attachment=True, 
+            download_name=zip_filename,
+            mimetype='application/zip'
+        )
+        
+    except Exception as e:
+        print(f"Multiple download error: {e}")
+        return jsonify({'error': 'Çoklu dosya indirme hatası'}), 500
+
 @app.route('/api/remove-file/<file_id>', methods=['DELETE'])
 def remove_file(file_id):
     """Dosyayı sil - hem gönderen hem alan silebilir"""
@@ -430,6 +558,104 @@ def remove_file(file_id):
     
     file_manager.remove_file(file_id)
     return jsonify({'success': True, 'message': 'Dosya silindi'})
+
+@app.route('/api/add-device', methods=['POST'])
+def add_device_manually():
+    """Manuel cihaz ekleme"""
+    try:
+        data = request.get_json()
+        ip = data.get('ip', '').strip()
+        name = data.get('name', '').strip()
+        
+        if not ip:
+            return jsonify({'error': 'IP adresi gerekli'}), 400
+        
+        # IP format kontrolü
+        import re
+        ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+        if not re.match(ip_pattern, ip):
+            return jsonify({'error': 'Geçersiz IP formatı'}), 400
+        
+        # Ping testi
+        ping_result = subprocess.run(['ping', '-n', '1', '-w', '2000', ip], 
+                                   capture_output=True, text=True)
+        
+        if ping_result.returncode != 0:
+            return jsonify({'error': f'Cihaz {ip} adresinde yanıt vermiyor'}), 404
+        
+        # Cihaz adı oluştur
+        if not name:
+            name = get_device_name_from_ip(ip)
+        
+        device_uid = generate_device_uid(ip, name)
+        
+        # Cihaz bilgilerini kaydet
+        connected_devices[ip] = {
+            'name': name,
+            'uid': device_uid,
+            'last_seen': datetime.now().isoformat()
+        }
+        
+        print(f"📱 Manuel cihaz eklendi: {name} ({ip})")
+        
+        return jsonify({
+            'success': True,
+            'device': {
+                'ip': ip,
+                'name': name,
+                'uid': device_uid,
+                'mac': 'Manuel-Eklenmiş'
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/scan-network')
+def scan_network():
+    """Manuel network taraması"""
+    try:
+        server_ip = get_server_ip()
+        print("🔍 Manuel network taraması başlatılıyor...")
+        
+        # Önce normal cihazları al
+        devices = get_connected_devices()
+        
+        # Sonra ping scan yap
+        ping_ips = scan_network_range(server_ip)
+        
+        new_devices_found = 0
+        for ip in ping_ips:
+            if ip != server_ip and not any(d['ip'] == ip for d in devices):
+                device_name = get_device_name_from_ip(ip)
+                device_uid = generate_device_uid(ip, device_name)
+                
+                print(f"📱 Ping ile bulunan cihaz: {device_name} ({ip})")
+                
+                # Cihaz bilgilerini güncelle
+                connected_devices[ip] = {
+                    'name': device_name,
+                    'uid': device_uid,
+                    'last_seen': datetime.now().isoformat()
+                }
+                
+                devices.append({
+                    'ip': ip,
+                    'name': device_name,
+                    'uid': device_uid,
+                    'mac': 'Ping-Discovery'
+                })
+                new_devices_found += 1
+        
+        return jsonify({
+            'success': True,
+            'devices': devices,
+            'new_devices_found': new_devices_found,
+            'message': f'Tarama tamamlandı. {new_devices_found} yeni cihaz bulundu.'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Uygulama kapanırken geçici dosyaları temizle
 def cleanup_uploads_folder():

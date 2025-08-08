@@ -257,6 +257,23 @@
             gap: 10px;
         }
 
+        .file-checkbox {
+            display: flex;
+            align-items: center;
+            margin-right: 10px;
+        }
+
+        .file-checkbox input {
+            width: 18px;
+            height: 18px;
+            accent-color: #667eea; /* Modern checkbox rengi */
+        }
+
+        .file-checkbox label {
+            margin-left: 5px;
+            cursor: pointer;
+        }
+
         .file-info {
             flex: 1;
             min-width: 200px;
@@ -479,11 +496,21 @@
             .btn {
                 width: 100%;
                 margin: 5px 0;
+                font-size: 0.9rem;
+                padding: 10px 15px;
             }
 
             .file-actions .btn {
                 flex: 1;
                 width: auto;
+            }
+
+            /* Çoklu indirme butonları için özel stil */
+            #multiDownloadButtons .btn,
+            #multiDownloadSentButtons .btn {
+                font-size: 0.8rem;
+                padding: 8px 10px;
+                margin: 3px 0;
             }
         }
 
@@ -570,6 +597,16 @@
 
                 <div class="input-group">
                     <button class="btn" onclick="loadMyFiles()">📥 Dosyalarımı Göster</button>
+                    <button class="btn" onclick="selectAllFiles(true)" style="background: #4CAF50;">✅ Tümünü Seç</button>
+                    <button class="btn" onclick="selectAllFiles(false)" style="background: #f44336;">❌ Seçimi Temizle</button>
+                </div>
+
+                <div class="input-group" id="multiDownloadButtons" style="display: none;">
+                    <button class="btn" onclick="downloadSelectedFiles()" style="background: #2196F3;">📦 Seçilenleri ZIP İndir</button>
+                    <button class="btn" onclick="downloadSelectedFilesSequential()" style="background: #FF9800;">⏭️ Seçilenleri Tek Tek İndir</button>
+                    <button class="btn" onclick="downloadAllFiles()" style="background: #9C27B0;">📦 Tümünü ZIP İndir</button>
+                    <button class="btn" onclick="downloadAllFilesSequential()" style="background: #795548;">⏭️ Tümünü Tek Tek İndir</button>
+                    <span id="selectedCount" style="margin-left: 10px; font-weight: bold; color: #666;"></span>
                 </div>
 
                 <div id="myFilesList" class="file-list">
@@ -580,7 +617,26 @@
             <!-- Cihazlar Sekmesi -->
             <div id="devicesTab" class="tab-content">
                 <h3 class="section-title">📱 Ağdaki Cihazlar</h3>
-                <button class="btn" onclick="refreshDevices()">🔄 Cihazları Yenile</button>
+                
+                <div class="input-group">
+                    <button class="btn" onclick="refreshDevices()">🔄 Cihazları Yenile</button>
+                    <button class="btn" onclick="scanNetwork()" style="background: #FF9800;">🔍 Network Tara</button>
+                    <button class="btn" onclick="toggleManualAdd()" style="background: #4CAF50;">➕ Manuel Cihaz Ekle</button>
+                </div>
+
+                <div id="manualAddSection" style="display: none; margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 2px solid #4CAF50;">
+                    <h4 style="margin-bottom: 10px; color: #4CAF50;">📱 Manuel Cihaz Ekleme</h4>
+                    <div class="input-group">
+                        <input type="text" id="manualIP" placeholder="IP Adresi (örn: 192.168.1.5)" style="flex: 2;">
+                        <input type="text" id="manualName" placeholder="Cihaz Adı (opsiyonel)" style="flex: 2;">
+                        <button class="btn" onclick="addDeviceManually()" style="background: #4CAF50;">✅ Ekle</button>
+                        <button class="btn" onclick="toggleManualAdd()" style="background: #f44336;">❌ İptal</button>
+                    </div>
+                    <small style="color: #666; display: block; margin-top: 8px;">
+                        💡 Cihaz otomatik algılanmıyorsa IP adresini manuel olarak ekleyebilirsiniz
+                    </small>
+                </div>
+                
                 <div id="allDevicesList" class="device-list">
                     <div class="status info">Cihazlar yükleniyor... <div class="loading"></div></div>
                 </div>
@@ -596,6 +652,16 @@
 
                 <div class="input-group">
                     <button class="btn" onclick="loadSentFiles()">📤 Gönderilen Dosyalarımı Göster</button>
+                    <button class="btn" onclick="selectAllSentFiles(true)" style="background: #4CAF50;">✅ Tümünü Seç</button>
+                    <button class="btn" onclick="selectAllSentFiles(false)" style="background: #f44336;">❌ Seçimi Temizle</button>
+                </div>
+
+                <div class="input-group" id="multiDownloadSentButtons" style="display: none;">
+                    <button class="btn" onclick="downloadSelectedSentFiles()" style="background: #2196F3;">📦 Seçilenleri ZIP İndir</button>
+                    <button class="btn" onclick="downloadSelectedSentFilesSequential()" style="background: #FF9800;">⏭️ Seçilenleri Tek Tek İndir</button>
+                    <button class="btn" onclick="downloadAllSentFiles()" style="background: #9C27B0;">📦 Tümünü ZIP İndir</button>
+                    <button class="btn" onclick="downloadAllSentFilesSequential()" style="background: #795548;">⏭️ Tümünü Tek Tek İndir</button>
+                    <span id="selectedSentCount" style="margin-left: 10px; font-weight: bold; color: #666;"></span>
                 </div>
 
                 <div id="sentFilesList" class="file-list">
@@ -662,6 +728,28 @@
             } catch (error) {
                 console.error('Cihazları yüklerken hata:', error);
                 showStatus('Cihazları yüklerken hata oluştu', 'error');
+            }
+        }
+
+        // Manuel network taraması
+        async function scanNetwork() {
+            showStatus('🔍 Network taranıyor... Bu işlem 10-15 saniye sürebilir', 'info');
+            
+            try {
+                const response = await fetch('/api/scan-network');
+                const result = await response.json();
+                
+                if (result.success) {
+                    devices = result.devices;
+                    updateDeviceList();
+                    updateAllDevicesList();
+                    showStatus(`✅ ${result.message}`, 'success');
+                } else {
+                    showStatus(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Network taraması sırasında hata oluştu', 'error');
+                console.error('Network scan error:', error);
             }
         }
 
@@ -839,6 +927,10 @@
 
                 filesList.innerHTML = data.files.map(file => `
                     <div class="file-item">
+                        <div class="file-checkbox">
+                            <input type="checkbox" id="file_${file.file_id}" class="file-select-checkbox" value="${file.file_id}" onchange="updateSelectedCount()">
+                            <label for="file_${file.file_id}"></label>
+                        </div>
                         <div class="file-info">
                             <div class="file-name">${file.is_encrypted ? '🔒' : '📄'} ${file.filename}</div>
                             <div class="file-meta">
@@ -854,6 +946,14 @@
                         </div>
                     </div>
                 `).join('');
+                
+                // Çoklu indirme butonlarını göster
+                if (data.files.length > 0) {
+                    document.getElementById('multiDownloadButtons').style.display = 'block';
+                    updateSelectedCount();
+                } else {
+                    document.getElementById('multiDownloadButtons').style.display = 'none';
+                }
             } catch (error) {
                 showStatus('Dosyalar yüklenirken hata oluştu', 'error');
                 console.error('Load files error:', error);
@@ -880,6 +980,10 @@
 
                 filesList.innerHTML = data.files.map(file => `
                     <div class="file-item">
+                        <div class="file-checkbox">
+                            <input type="checkbox" id="sent_${file.file_id}" class="sent-file-select-checkbox" value="${file.file_id}" onchange="updateSelectedSentCount()">
+                            <label for="sent_${file.file_id}"></label>
+                        </div>
                         <div class="file-info">
                             <div class="file-name">📄 ${file.filename}</div>
                             <div class="file-meta">
@@ -895,6 +999,14 @@
                         </div>
                     </div>
                 `).join('');
+                
+                // Çoklu indirme butonlarını göster
+                if (data.files.length > 0) {
+                    document.getElementById('multiDownloadSentButtons').style.display = 'block';
+                    updateSelectedSentCount();
+                } else {
+                    document.getElementById('multiDownloadSentButtons').style.display = 'none';
+                }
             } catch (error) {
                 showStatus('Gönderilen dosyalar yüklenirken hata oluştu', 'error');
                 console.error('Load sent files error:', error);
@@ -936,6 +1048,439 @@
             }
         }
 
+        // Çoklu dosya seçim fonksiyonları
+        function updateSelectedCount() {
+            const checkboxes = document.querySelectorAll('.file-select-checkbox');
+            const selectedCheckboxes = document.querySelectorAll('.file-select-checkbox:checked');
+            const count = selectedCheckboxes.length;
+            const total = checkboxes.length;
+            
+            const countElement = document.getElementById('selectedCount');
+            if (count > 0) {
+                countElement.textContent = `${count}/${total} dosya seçili`;
+                countElement.style.color = '#2196F3';
+            } else {
+                countElement.textContent = `${total} dosya var`;
+                countElement.style.color = '#666';
+            }
+        }
+
+        function selectAllFiles(selectAll) {
+            const checkboxes = document.querySelectorAll('.file-select-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll;
+            });
+            updateSelectedCount();
+        }
+
+        async function downloadSelectedFiles() {
+            const selectedCheckboxes = document.querySelectorAll('.file-select-checkbox:checked');
+            const fileIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ Lütfen en az bir dosya seçin', 'error');
+                return;
+            }
+            
+            try {
+                showStatus(`📦 ${fileIds.length} dosya ZIP arşivine ekleniyor...`, 'info');
+                
+                const response = await fetch('/api/download-multiple', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        file_ids: fileIds
+                    })
+                });
+
+                if (response.ok) {
+                    // ZIP dosyasını indir
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `dosyalar_${new Date().toISOString().slice(0,16).replace(/[:-]/g, '')}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showStatus(`✅ ${fileIds.length} dosya ZIP olarak indirildi`, 'success');
+                } else {
+                    const error = await response.json();
+                    showStatus(`❌ ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ ZIP indirme hatası', 'error');
+                console.error('Multiple download error:', error);
+            }
+        }
+
+        async function downloadAllFiles() {
+            const allCheckboxes = document.querySelectorAll('.file-select-checkbox');
+            const fileIds = Array.from(allCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ İndirilecek dosya bulunamadı', 'error');
+                return;
+            }
+            
+            try {
+                showStatus(`📦 Tüm dosyalar (${fileIds.length} adet) ZIP arşivine ekleniyor...`, 'info');
+                
+                const response = await fetch('/api/download-multiple', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        file_ids: fileIds
+                    })
+                });
+
+                if (response.ok) {
+                    // ZIP dosyasını indir
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `tum_dosyalar_${new Date().toISOString().slice(0,16).replace(/[:-]/g, '')}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showStatus(`✅ Tüm dosyalar (${fileIds.length} adet) ZIP olarak indirildi`, 'success');
+                } else {
+                    const error = await response.json();
+                    showStatus(`❌ ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ ZIP indirme hatası', 'error');
+                console.error('Multiple download error:', error);
+            }
+        }
+
+        // Seçilenleri tek tek indir (Alınan dosyalar)
+        async function downloadSelectedFilesSequential() {
+            const selectedCheckboxes = document.querySelectorAll('.file-select-checkbox:checked');
+            const fileIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ Lütfen en az bir dosya seçin', 'error');
+                return;
+            }
+            
+            showStatus(`⏭️ ${fileIds.length} dosya tek tek indiriliyor...`, 'info');
+            
+            // Her dosyayı 3 saniye arayla indir (tarayıcı popup bloklamalarını önlemek için)
+            for (let i = 0; i < fileIds.length; i++) {
+                const fileId = fileIds[i];
+                
+                // Progress güncelle
+                showStatus(`⏭️ ${i + 1}/${fileIds.length} dosya indiriliyor... (${fileId.slice(0,8)}...)`, 'info');
+                
+                // Dosyayı indir - iframe ile popup bloklama bypass
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `/api/download/${fileId}`;
+                document.body.appendChild(iframe);
+                
+                // 2 saniye sonra iframe'i temizle
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 2000);
+                
+                // Son dosya değilse bekle
+                if (i < fileIds.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 saniye bekle
+                }
+            }
+            
+            showStatus(`✅ ${fileIds.length} dosya tek tek indirildi`, 'success');
+        }
+
+        // Tümünü tek tek indir (Alınan dosyalar)
+        async function downloadAllFilesSequential() {
+            const allCheckboxes = document.querySelectorAll('.file-select-checkbox');
+            const fileIds = Array.from(allCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ İndirilecek dosya bulunamadı', 'error');
+                return;
+            }
+            
+            showStatus(`⏭️ Tüm dosyalar (${fileIds.length} adet) tek tek indiriliyor...`, 'info');
+            
+            // Her dosyayı 3 saniye arayla indir
+            for (let i = 0; i < fileIds.length; i++) {
+                const fileId = fileIds[i];
+                
+                // Progress güncelle
+                showStatus(`⏭️ ${i + 1}/${fileIds.length} dosya indiriliyor...`, 'info');
+                
+                // Dosyayı indir - iframe ile popup bloklama bypass
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `/api/download/${fileId}`;
+                document.body.appendChild(iframe);
+                
+                // 2 saniye sonra iframe'i temizle
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 2000);
+                
+                // Son dosya değilse bekle
+                if (i < fileIds.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
+            
+            showStatus(`✅ Tüm dosyalar (${fileIds.length} adet) tek tek indirildi`, 'success');
+        }
+
+        // Gönderilen dosyalar için çoklu seçim fonksiyonları
+        function updateSelectedSentCount() {
+            const checkboxes = document.querySelectorAll('.sent-file-select-checkbox');
+            const selectedCheckboxes = document.querySelectorAll('.sent-file-select-checkbox:checked');
+            const count = selectedCheckboxes.length;
+            const total = checkboxes.length;
+            
+            const countElement = document.getElementById('selectedSentCount');
+            if (count > 0) {
+                countElement.textContent = `${count}/${total} dosya seçili`;
+                countElement.style.color = '#2196F3';
+            } else {
+                countElement.textContent = `${total} dosya var`;
+                countElement.style.color = '#666';
+            }
+        }
+
+        function selectAllSentFiles(selectAll) {
+            const checkboxes = document.querySelectorAll('.sent-file-select-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll;
+            });
+            updateSelectedSentCount();
+        }
+
+        async function downloadSelectedSentFiles() {
+            const selectedCheckboxes = document.querySelectorAll('.sent-file-select-checkbox:checked');
+            const fileIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ Lütfen en az bir dosya seçin', 'error');
+                return;
+            }
+            
+            try {
+                showStatus(`📦 ${fileIds.length} gönderilen dosya ZIP arşivine ekleniyor...`, 'info');
+                
+                const response = await fetch('/api/download-multiple', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        file_ids: fileIds
+                    })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `gonderilen_dosyalar_${new Date().toISOString().slice(0,16).replace(/[:-]/g, '')}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showStatus(`✅ ${fileIds.length} gönderilen dosya ZIP olarak indirildi`, 'success');
+                } else {
+                    const error = await response.json();
+                    showStatus(`❌ ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ ZIP indirme hatası', 'error');
+                console.error('Multiple download error:', error);
+            }
+        }
+
+        async function downloadAllSentFiles() {
+            const allCheckboxes = document.querySelectorAll('.sent-file-select-checkbox');
+            const fileIds = Array.from(allCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ İndirilecek dosya bulunamadı', 'error');
+                return;
+            }
+            
+            try {
+                showStatus(`📦 Tüm gönderilen dosyalar (${fileIds.length} adet) ZIP arşivine ekleniyor...`, 'info');
+                
+                const response = await fetch('/api/download-multiple', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        file_ids: fileIds
+                    })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `tum_gonderilen_dosyalar_${new Date().toISOString().slice(0,16).replace(/[:-]/g, '')}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showStatus(`✅ Tüm gönderilen dosyalar (${fileIds.length} adet) ZIP olarak indirildi`, 'success');
+                } else {
+                    const error = await response.json();
+                    showStatus(`❌ ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ ZIP indirme hatası', 'error');
+                console.error('Multiple download error:', error);
+            }
+        }
+
+        // Seçilenleri tek tek indir (Gönderilen dosyalar)
+        async function downloadSelectedSentFilesSequential() {
+            const selectedCheckboxes = document.querySelectorAll('.sent-file-select-checkbox:checked');
+            const fileIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ Lütfen en az bir dosya seçin', 'error');
+                return;
+            }
+            
+            showStatus(`⏭️ ${fileIds.length} gönderilen dosya tek tek indiriliyor...`, 'info');
+            
+            // Her dosyayı 3 saniye arayla indir
+            for (let i = 0; i < fileIds.length; i++) {
+                const fileId = fileIds[i];
+                
+                // Progress güncelle
+                showStatus(`⏭️ ${i + 1}/${fileIds.length} gönderilen dosya indiriliyor...`, 'info');
+                
+                // Dosyayı indir - iframe ile popup bloklama bypass
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `/api/download/${fileId}`;
+                document.body.appendChild(iframe);
+                
+                // 2 saniye sonra iframe'i temizle
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 2000);
+                
+                // Son dosya değilse bekle
+                if (i < fileIds.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
+            
+            showStatus(`✅ ${fileIds.length} gönderilen dosya tek tek indirildi`, 'success');
+        }
+
+        // Tümünü tek tek indir (Gönderilen dosyalar)
+        async function downloadAllSentFilesSequential() {
+            const allCheckboxes = document.querySelectorAll('.sent-file-select-checkbox');
+            const fileIds = Array.from(allCheckboxes).map(cb => cb.value);
+            
+            if (fileIds.length === 0) {
+                showStatus('❌ İndirilecek dosya bulunamadı', 'error');
+                return;
+            }
+            
+            showStatus(`⏭️ Tüm gönderilen dosyalar (${fileIds.length} adet) tek tek indiriliyor...`, 'info');
+            
+            // Her dosyayı 3 saniye arayla indir
+            for (let i = 0; i < fileIds.length; i++) {
+                const fileId = fileIds[i];
+                
+                // Progress güncelle
+                showStatus(`⏭️ ${i + 1}/${fileIds.length} gönderilen dosya indiriliyor...`, 'info');
+                
+                // Dosyayı indir - iframe ile popup bloklama bypass
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `/api/download/${fileId}`;
+                document.body.appendChild(iframe);
+                
+                // 2 saniye sonra iframe'i temizle
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 2000);
+                
+                // Son dosya değilse bekle
+                if (i < fileIds.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
+            
+            showStatus(`✅ Tüm gönderilen dosyalar (${fileIds.length} adet) tek tek indirildi`, 'success');
+        }
+
+        // Manuel cihaz ekleme
+        async function addDeviceManually() {
+            const ip = document.getElementById('manualIP').value.trim();
+            const name = document.getElementById('manualName').value.trim();
+
+            if (!ip) {
+                showStatus('IP adresi boş bırakılamaz', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/add-device', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ip: ip,
+                        name: name || ip // Eğer ad girilmezse IP'yi kullan
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showStatus(`✅ ${result.message}`, 'success');
+                    refreshDevices(); // Cihazları yeniden yükle
+                    document.getElementById('manualIP').value = '';
+                    document.getElementById('manualName').value = '';
+                    document.getElementById('manualAddSection').style.display = 'none';
+                } else {
+                    showStatus(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Manuel cihaz eklenirken hata oluştu', 'error');
+                console.error('Manual device add error:', error);
+            }
+        }
+
+        // Manuel cihaz ekleme arayüzünü göster/gizle
+        function toggleManualAdd() {
+            const manualAddSection = document.getElementById('manualAddSection');
+            if (manualAddSection.style.display === 'none') {
+                manualAddSection.style.display = 'block';
+            } else {
+                manualAddSection.style.display = 'none';
+            }
+        }
+
         // Dosya boyutu formatlama
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
@@ -956,8 +1501,8 @@
             }, 5000);
         }
 
-        // 30 saniyede bir cihazları yenile
-        setInterval(refreshDevices, 30000);
+        // 2 dakikada bir cihazları yenile (eskiden 30 saniyeydi)
+        setInterval(refreshDevices, 120000);
     </script>
 </body>
 </html> 
